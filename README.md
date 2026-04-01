@@ -6,6 +6,7 @@ Display a grid over google map. One file index.html and this it it.
 
 Example
 
+![Example screenshot](roland-garos.png)
 
 To use it you need a google map api key.
 
