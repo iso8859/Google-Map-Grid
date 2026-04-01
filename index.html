@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MapGrid</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+
+    #map-container { position: relative; width: 100%; height: 100%; }
+    #map           { position: absolute; inset: 0; }
+
+    #grid-canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    /* ── Controls bar ─────────────────────────────────────────────── */
+    #ui {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 20;
+      background: rgba(24, 24, 24, 0.92);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      padding: 8px 14px;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.55);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: -apple-system, Arial, sans-serif;
+      font-size: 12px;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    .grp {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .lbl  { font-size: 9px; color: #aaa; text-transform: uppercase; letter-spacing: 0.4px; }
+    .hint { font-size: 9px; color: #666; }
+
+    input[type="number"] {
+      width: 72px;
+      padding: 3px 6px;
+      background: #2a2a2a;
+      border: 1px solid #4a4a4a;
+      border-radius: 5px;
+      color: #fff;
+      font-size: 12px;
+      text-align: center;
+      outline: none;
+    }
+    input[type="number"]:focus { border-color: #4a9eff; }
+
+    input[type="range"] {
+      width: 72px;
+      accent-color: #4a9eff;
+      cursor: pointer;
+    }
+
+    input[type="color"] {
+      width: 46px;
+      height: 28px;
+      border: 1px solid #4a4a4a;
+      border-radius: 5px;
+      background: none;
+      cursor: pointer;
+      padding: 2px;
+    }
+
+    .divider {
+      width: 1px;
+      height: 44px;
+      background: rgba(255,255,255,0.1);
+      flex-shrink: 0;
+    }
+
+    .btn {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #fff;
+      transition: filter 0.15s;
+      letter-spacing: 0.2px;
+    }
+    .btn:hover  { filter: brightness(1.2); }
+    .btn:active { filter: brightness(0.85); }
+
+    #btn-grid              { background: #2e7d32; min-width: 84px; }
+    #btn-grid.on           { background: #c62828; }
+    #btn-anchor            { background: #1565c0; min-width: 84px; }
+    #btn-anchor.anchored   { background: #6a1b9a; }
+    #btn-num               { background: #37474f; min-width: 84px; }
+    #btn-num.on            { background: #e65100; }
+
+    /* ── Search bar ───────────────────────────────────────────────── */
+    #search-bar {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 20;
+      background: rgba(24, 24, 24, 0.92);
+      backdrop-filter: blur(8px);
+      border-radius: 10px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.55);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      font-family: -apple-system, Arial, sans-serif;
+    }
+    #inp-search {
+      width: 240px;
+      padding: 5px 10px;
+      background: #2a2a2a;
+      border: 1px solid #4a4a4a;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 13px;
+      outline: none;
+    }
+    #inp-search:focus { border-color: #4a9eff; }
+    #inp-search::placeholder { color: #666; }
+    #btn-search {
+      padding: 5px 12px;
+      background: #1565c0;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: filter 0.15s;
+      white-space: nowrap;
+    }
+    #btn-search:hover  { filter: brightness(1.2); }
+    #btn-search:active { filter: brightness(0.85); }
+    #search-msg {
+      font-size: 11px;
+      color: #f88;
+      display: none;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+<div id="map-container">
+  <div id="map"></div>
+  <canvas id="grid-canvas"></canvas>
+</div>
+
+<div id="search-bar">
+  <input type="text" id="inp-search" placeholder="Rechercher une adresse…" autocomplete="off">
+  <button class="btn" id="btn-search">&#128269; Aller</button>
+  <span id="search-msg">Adresse introuvable</span>
+</div>
+
+<div id="ui">
+  <div class="grp">
+    <span class="lbl">Taille (m)</span>
+    <input type="number" id="inp-size" value="2" min="0.01" step="0.5">
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="grp">
+    <span class="lbl">Rotation (°)</span>
+    <input type="number" id="inp-rot" value="0" step="1">
+    <span class="hint">CTRL + molette &nbsp;|&nbsp; +SHIFT = 0.1°</span>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="grp">
+    <span class="lbl">Couleur</span>
+    <input type="color" id="inp-color" value="#ff4444">
+  </div>
+
+  <div class="grp">
+    <span class="lbl">Opacité</span>
+    <input type="range" id="inp-opacity" min="0.05" max="1" step="0.05" value="0.8">
+  </div>
+
+  <div class="grp">
+    <span class="lbl">Trait (px)</span>
+    <input type="number" id="inp-lw" value="1.5" min="0.5" max="10" step="0.5">
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="grp" style="gap:5px">
+    <button class="btn" id="btn-grid">Grille OFF</button>
+    <button class="btn" id="btn-anchor">Ancrer ici</button>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="grp">
+    <span class="lbl">Pas num.</span>
+    <input type="number" id="inp-numstep" value="1" min="1" step="1">
+  </div>
+
+  <div class="grp">
+    <button class="btn" id="btn-num">Numéros OFF</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── State ──────────────────────────────────────────────────────── */
+  let map    = null;
+  let isOn   = false;
+  let numOn  = false;
+  let anchor = null;   // { lat, lng } | null  →  null = suit le centre de la vue
+
+  const g = {
+    size   : 2,
+    rot    : 0,
+    color  : '#ff4444',
+    opacity : 0.8,
+    lw      : 1.5,
+    numStep : 1,
+  };
+
+  /* ── Canvas ─────────────────────────────────────────────────────── */
+  const canvas = document.getElementById('grid-canvas');
+  const ctx    = canvas.getContext('2d');
+
+  function draw() {
+    if (!map) return;
+
+    const cont = document.getElementById('map-container');
+    const W    = cont.offsetWidth;
+    const H    = cont.offsetHeight;
+    const dpr  = window.devicePixelRatio || 1;
+
+    // Resetting canvas.width clears the drawing AND resets the transform
+    canvas.width        = W * dpr;
+    canvas.height       = H * dpr;
+    canvas.style.width  = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.scale(dpr, dpr);
+
+    if (!isOn) return;
+
+    const zoom   = map.getZoom();
+    const mapCtr = map.getCenter();
+    const lat    = mapCtr.lat();
+
+    // Meters per pixel (Web Mercator) at the current zoom/latitude
+    const mpp    = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+    const cellPx = g.size / mpp;
+    if (cellPx < 2) return;  // grid too dense to render usefully
+
+    // ── Anchor pixel on canvas ──────────────────────────────────────
+    let ax = W / 2, ay = H / 2;
+    if (anchor) {
+      const dlat       = anchor.lat - lat;
+      const dlng       = anchor.lng - mapCtr.lng();
+      const mPerDegLat = 111320;
+      const mPerDegLng = 111320 * Math.cos(lat * Math.PI / 180);
+      ax = W / 2 + dlng * mPerDegLng / mpp;
+      ay = H / 2 - dlat * mPerDegLat / mpp;
+    }
+
+    // ── Parse hex color ─────────────────────────────────────────────
+    const hex = g.color.replace('#', '');
+    const r   = parseInt(hex.slice(0, 2), 16);
+    const gv  = parseInt(hex.slice(2, 4), 16);
+    const b   = parseInt(hex.slice(4, 6), 16);
+
+    ctx.save();
+    ctx.translate(ax, ay);
+    ctx.rotate(g.rot * Math.PI / 180);
+
+    // ── Grid lines ──────────────────────────────────────────────────
+    ctx.strokeStyle = `rgba(${r},${gv},${b},${g.opacity})`;
+    ctx.lineWidth   = g.lw;
+    ctx.lineCap     = 'butt';
+
+    const diag = Math.hypot(W, H);
+    const n    = Math.ceil(diag / cellPx) + 2;
+    const ext  = n * cellPx;
+
+    ctx.beginPath();
+    for (let i = -n; i <= n; i++) {
+      const p = i * cellPx;
+      ctx.moveTo(p,   -ext);   ctx.lineTo(p,    ext);  // vertical
+      ctx.moveTo(-ext,  p);    ctx.lineTo(ext,   p);   // horizontal
+    }
+    ctx.stroke();
+
+    // ── Center crosshair ────────────────────────────────────────────
+    ctx.strokeStyle = `rgba(${r},${gv},${b},1)`;
+    ctx.lineWidth   = 1.5;
+    const cs = 10;
+    ctx.beginPath();
+    ctx.moveTo(-cs, 0); ctx.lineTo(cs, 0);
+    ctx.moveTo(0, -cs); ctx.lineTo(0, cs);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // ── Numbering ────────────────────────────────────────────────────
+    if (numOn) {
+      const step  = Math.max(1, Math.round(g.numStep));
+      const minPx = step * cellPx;
+      if (minPx >= 24) {
+        const fsize  = Math.max(8, Math.min(minPx * 0.22, 13));
+        const nmod   = function (a, m) { return ((a % m) + m) % m; };
+        ctx.font         = 'bold ' + fsize + 'px monospace';
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth    = 3;
+        ctx.lineJoin     = 'round';
+        for (let col = -n - 1; col <= n; col++) {
+          if (nmod(col, step) !== 0) continue;
+          for (let row = -n - 1; row <= n; row++) {
+            if (nmod(row, step) !== 0) continue;
+            const cx    = (col + 0.5) * cellPx;
+            const cy    = -(row + 0.5) * cellPx;
+            const label = col + ',' + row;
+            ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+            ctx.strokeText(label, cx, cy);
+            ctx.fillStyle   = `rgba(${r},${gv},${b},1)`;
+            ctx.fillText(label, cx, cy);
+          }
+        }
+      }
+    }
+
+    ctx.restore();
+  }
+
+  /* ── Address search ────────────────────────────────────────────── */
+  function setupSearch() {
+    const input  = document.getElementById('inp-search');
+    const btn    = document.getElementById('btn-search');
+    const msg    = document.getElementById('search-msg');
+    const geocoder = new google.maps.Geocoder();
+
+    function doSearch() {
+      const q = input.value.trim();
+      if (!q) return;
+      msg.style.display = 'none';
+      geocoder.geocode({ address: q }, function (results, status) {
+        if (status === 'OK' && results.length) {
+          map.setCenter(results[0].geometry.location);
+          map.fitBounds(results[0].geometry.viewport);
+        } else {
+          msg.style.display = 'inline';
+        }
+      });
+    }
+
+    btn.addEventListener('click', doSearch);
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') doSearch();
+    });
+  }
+
+  /* ── Google Maps init ───────────────────────────────────────────── */
+  window.initMap = function () {
+    map = new google.maps.Map(document.getElementById('map'), {
+      center         : { lat: 48.8566, lng: 2.3522 },
+      zoom           : 20,
+      mapTypeId      : 'satellite',
+      gestureHandling: 'greedy',
+      tilt           : 0,
+    });
+    map.addListener('bounds_changed', draw);
+    setupSearch();
+  };
+
+  /* ── Input bindings ─────────────────────────────────────────────── */
+  function bind(id, key, parse) {
+    document.getElementById(id).addEventListener('input', function () {
+      g[key] = parse(this.value);
+      draw();
+    });
+  }
+
+  bind('inp-size',    'size',    function(v){ return Math.max(0.01, parseFloat(v) || 2); });
+  bind('inp-rot',     'rot',     function(v){ return parseFloat(v) || 0; });
+  bind('inp-color',   'color',   function(v){ return v; });
+  bind('inp-opacity', 'opacity', function(v){ return parseFloat(v); });
+  bind('inp-lw',      'lw',      function(v){ return Math.max(0.5, parseFloat(v) || 1.5); });
+  bind('inp-numstep', 'numStep', function(v){ return Math.max(1, Math.round(parseFloat(v) || 1)); });
+
+  /* ── Toggle grid ────────────────────────────────────────────────── */
+  document.getElementById('btn-grid').addEventListener('click', function () {
+    isOn = !isOn;
+    this.textContent = isOn ? 'Grille ON' : 'Grille OFF';
+    this.classList.toggle('on', isOn);
+    draw();
+  });
+
+  /* ── Anchor / Free ──────────────────────────────────────────────── */
+  document.getElementById('btn-anchor').addEventListener('click', function () {
+    if (anchor) {
+      anchor = null;
+      this.textContent = 'Ancrer ici';
+      this.classList.remove('anchored');
+    } else {
+      const c = map.getCenter();
+      anchor  = { lat: c.lat(), lng: c.lng() };
+      this.textContent = 'Libérer';
+      this.classList.add('anchored');
+    }
+    draw();
+  });
+
+  /* ── Toggle numbering ─────────────────────────────────────────────── */
+  document.getElementById('btn-num').addEventListener('click', function () {
+    numOn = !numOn;
+    this.textContent = numOn ? 'Numéros ON' : 'Numéros OFF';
+    this.classList.toggle('on', numOn);
+    draw();
+  });
+
+  /* ── CTRL + wheel → rotation ────────────────────────────────────── */
+  document.getElementById('map-container').addEventListener('wheel', function (e) {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const step = e.shiftKey ? 0.1 : 1;
+    g.rot += e.deltaY > 0 ? step : -step;
+    if (g.rot >  180) g.rot -= 360;
+    if (g.rot < -180) g.rot += 360;
+    document.getElementById('inp-rot').value = +g.rot.toFixed(1);
+    draw();
+  }, { passive: false });
+
+  window.addEventListener('resize', draw);
+})();
+</script>
+
+<!--
+  IMPORTANT : remplacez YOUR_API_KEY par votre clé d'API Google Maps.
+  Obtenez-en une sur https://console.cloud.google.com/ (Maps JavaScript API).
+-->
+<script async defer
+  src="https://maps.googleapis.com/maps/api/js?key=<your api key>&callback=initMap">
+</script>
+
+</body>
+</html>
